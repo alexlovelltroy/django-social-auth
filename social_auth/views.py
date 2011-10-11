@@ -30,6 +30,7 @@ NEW_ASSOCIATION_REDIRECT = _setting('SOCIAL_AUTH_NEW_ASSOCIATION_REDIRECT_URL')
 DISCONNECT_REDIRECT_URL = _setting('SOCIAL_AUTH_DISCONNECT_REDIRECT_URL')
 LOGIN_ERROR_URL = _setting('LOGIN_ERROR_URL', settings.LOGIN_URL)
 COMPLETE_URL_NAME = _setting('SOCIAL_AUTH_COMPLETE_URL_NAME', 'socialauth_complete')
+REGISTRATION_COMPLETE_URL_NAME = _setting('SOCIAL_AUTH_COMPLETE_URL_NAME', 'socialauth_register_complete')
 ASSOCIATE_URL_NAME = _setting('SOCIAL_AUTH_ASSOCIATE_URL_NAME',
                               'socialauth_associate_complete')
 SOCIAL_AUTH_LAST_LOGIN = _setting('SOCIAL_AUTH_LAST_LOGIN',
@@ -82,6 +83,11 @@ def dsa_view(redirect_name=None):
 
 @dsa_view(COMPLETE_URL_NAME)
 def auth(request, backend):
+    """Start authentication process"""
+    return auth_process(request, backend)
+
+@dsa_view(REGISTRATION_COMPLETE_URL_NAME)
+def register(request, backend):
     """Start authentication process"""
     return auth_process(request, backend)
 

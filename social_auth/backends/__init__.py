@@ -87,6 +87,27 @@ class SocialAuthBackend(ModelBackend):
     a authentication provider response"""
     name = ''  # provider name, it's stored in database
 
+    def _register_or_associate(self, user, uid, response, details):
+        """A helper function to do the actual registration and assocaition for
+        new accounts."""
+        email = details.get('email')
+        if email and ASSOCIATE_BY_MAIL:
+            # try to associate accounts registered with the same email
+            # address, only if it's a single object. ValueError is
+            # raised if multiple objects are returned
+            try:
+                user = User.objects.get(email=email)
+            except MultipleObjectsReturned:
+                raise ValueError('Not unique email address supplied')
+            except User.DoesNotExist:
+                user = None
+        if not user:
+            username = self.username(details)
+            user = User.objects.create_user(username=username,
+                                            email=email)
+            is_new = True
+        return (user, is_new)
+
     def authenticate(self, *args, **kwargs):
         """Authenticate user using social credentials
 
@@ -119,23 +140,8 @@ class SocialAuthBackend(ModelBackend):
                                                    response=response,
                                                    details=details)
                     return None
-
-                email = details.get('email')
-                if email and ASSOCIATE_BY_MAIL:
-                    # try to associate accounts registered with the same email
-                    # address, only if it's a single object. ValueError is
-                    # raised if multiple objects are returned
-                    try:
-                        user = User.objects.get(email=email)
-                    except MultipleObjectsReturned:
-                        raise ValueError('Not unique email address supplied')
-                    except User.DoesNotExist:
-                        user = None
-                if not user:
-                    username = self.username(details)
-                    user = User.objects.create_user(username=username,
-                                                    email=email)
-                    is_new = True
+                if kwargs.get('register', False):
+                    (user, is_new) = self._register_or_associate(user, uid, response, details)
 
             try:
                 social_user = self.associate_auth(user, uid, response, details)
