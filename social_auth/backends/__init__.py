@@ -125,18 +125,52 @@ class SocialAuthBackend(ModelBackend):
         # authenticate.
         if not (self.name and kwargs.get(self.name) and 'response' in kwargs):
             return None
-
+# Pull in basics from the backend
         response = kwargs.get('response')
         details = self.get_user_details(response)
         uid = self.get_user_id(details, response)
         is_new = False
         user = kwargs.get('user')
 
+# If we've got an associated user, we're good to go
         try:
             social_user = self.get_social_auth_user(uid)
         except UserSocialAuth.DoesNotExist:
-            if user is None:  # new user
-                if not CREATE_USERS or not kwargs.get('create_user', True):
+# Oops!  We don't know who you are!
+# There's two ways this can happen
+# 1. You're new here and we'll need to register you if that's the kind of place this is
+# 2. You've been here a while, but need to link this profile
+# Creating users is a pain, but we need to do that first so that we can link later
+            if user is None: # You're new here!
+# Check to see if we've been told to create new users
+# First, we need permission from settings in the form of CREATE_USERS
+# Then we need to make sure that the kwarg for create_user isn't False
+                if CREATE_USERS and kwargs.get('create_user', True):
+# We can create the user!  JOY!
+# But wait!  Shouldn't we check to see if there's already a user with this e-mail address and just link the two?
+                    email = details.get('email')
+                    if email and ASSOCIATE_BY_MAIL:
+                        # try to associate accounts registered with the same email
+                        # address, only if it's a single object. ValueError is
+                        # raised if multiple objects are returned
+                        try:
+                            user = User.objects.get(email=email)
+                        except MultipleObjectsReturned:
+                            raise ValueError('Not unique email address supplied')
+                        except User.DoesNotExist:
+                            user = None
+# OK.  we're finally ready to create the account if we got to this point without a user
+                    if not user:
+                        username = self.username(details)
+                        print('Creating new user with username %s and email %s',
+                                     username, sanitize_log_data(email))
+                        logger.debug('Creating new user with username %s and email %s',
+                                     username, sanitize_log_data(email))
+                        user = User.objects.create_user(username=username,
+                                                        email=email)
+                        is_new = True
+                else:
+# Wait a second!  We can't create a user!  We're forbidden by the settings or the kwargs
                     # Send signal for cases where tracking failed registering
                     # is useful.
                     socialauth_not_registered.send(sender=self.__class__,
@@ -144,9 +178,7 @@ class SocialAuthBackend(ModelBackend):
                                                    response=response,
                                                    details=details)
                     return None
-                if kwargs.get('register', False):
-                    (user, is_new) = self._register_or_associate(user, uid, response, details)
-
+# Now, we've either created a user or we've returned a None.  Link!
             try:
                 social_user = self.associate_auth(user, uid, response, details)
             except IntegrityError:
@@ -174,6 +206,7 @@ class SocialAuthBackend(ModelBackend):
         # Update user account data.
         self.update_user_details(user, response, details, is_new)
         return user
+
 
     def username(self, details):
         """Return an unique username, if SOCIAL_AUTH_FORCE_RANDOM_USERNAME
